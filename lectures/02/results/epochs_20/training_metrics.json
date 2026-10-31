@@ -1,0 +1,59 @@
+{
+  "train_runtime_seconds": 238.7672,
+  "final_logged_loss": 0.013955086469650269,
+  "final_logged_loss_definition": "最後のlogging区間の平均loss（10 steps）",
+  "train_loss_overall": 0.4190472587943077,
+  "global_step": 40,
+  "epoch": 20.0,
+  "log_history": [
+    {
+      "loss": 1.561210823059082,
+      "grad_norm": 2.058093547821045,
+      "learning_rate": 0.00019618256431728194,
+      "entropy": 1.8382759094238281,
+      "num_tokens": 17860.0,
+      "mean_token_accuracy": 0.6871598720550537,
+      "epoch": 5.0,
+      "step": 10
+    },
+    {
+      "loss": 0.082891845703125,
+      "grad_norm": 0.2769385874271393,
+      "learning_rate": 0.00013612416661871533,
+      "entropy": 0.1748102366924286,
+      "num_tokens": 35720.0,
+      "mean_token_accuracy": 0.9846039265394211,
+      "epoch": 10.0,
+      "step": 20
+    },
+    {
+      "loss": 0.018131279945373537,
+      "grad_norm": 0.27262789011001587,
+      "learning_rate": 4.735678371226441e-05,
+      "entropy": 0.043504332285374404,
+      "num_tokens": 53580.0,
+      "mean_token_accuracy": 0.9959627091884613,
+      "epoch": 15.0,
+      "step": 30
+    },
+    {
+      "loss": 0.013955086469650269,
+      "grad_norm": 0.21362589299678802,
+      "learning_rate": 4.2658237049655323e-07,
+      "entropy": 0.03068465953692794,
+      "num_tokens": 71440.0,
+      "mean_token_accuracy": 0.9963105946779252,
+      "epoch": 20.0,
+      "step": 40
+    },
+    {
+      "train_runtime": 238.7672,
+      "train_samples_per_second": 1.173,
+      "train_steps_per_second": 0.168,
+      "total_flos": 221402196196608.0,
+      "train_loss": 0.4190472587943077,
+      "epoch": 20.0,
+      "step": 40
+    }
+  ]
+}

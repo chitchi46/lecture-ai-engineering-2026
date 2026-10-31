@@ -1,0 +1,137 @@
+{
+  "config": {
+    "base_model": "Qwen/Qwen3.5-0.8B",
+    "revision": "2fc06364715b967f1860aea9cf38778875588b17",
+    "seed": 42,
+    "num_train_epochs": 20,
+    "warmup_steps": 6,
+    "lr": 0.0002,
+    "lora_r": 16,
+    "lora_alpha": 32,
+    "max_seq_len": 512,
+    "max_new_tokens": 96,
+    "gen": {
+      "do_sample": false
+    }
+  },
+  "versions": {
+    "transformers": "5.18.0",
+    "peft": "0.21.1",
+    "trl": "1.14.2",
+    "torch": "2.11.0+cu130"
+  },
+  "method": "LoRA（量子化なし）",
+  "before": {
+    "label": "before",
+    "n": 21,
+    "format_rate": 0.09523809523809523,
+    "content_rate": 0.0,
+    "both_rate": 0.0,
+    "seconds": 22.2
+  },
+  "after": {
+    "label": "after",
+    "n": 21,
+    "format_rate": 1.0,
+    "content_rate": 0.9047619047619048,
+    "both_rate": 0.9047619047619048,
+    "seconds": 46.1
+  },
+  "regressed": [],
+  "knowledge": [
+    {
+      "質問": "この講座の最終課題の締切はいつですか",
+      "FAQ にある": false,
+      "学習前の分類": "format_error",
+      "学習前の出力": "{\"answer\": \"9 月 30 日 23:59\"}",
+      "学習後の分類": "asserted",
+      "学習後の出力": "{\"answer\": \"課題の提出期限は 9 月 30 日 23:59（日本時間）です。\", \"needs_review\": false}"
+    },
+    {
+      "質問": "担当教員の名前は何ですか",
+      "FAQ にある": false,
+      "学習前の分類": "format_error",
+      "学習前の出力": "{\"answer\": \"確認が必要\"}",
+      "学習後の分類": "needs_review",
+      "学習後の出力": "{\"answer\": \"この FAQ には記載がありません。運営に確認が必要です。\", \"needs_review\": true}"
+    },
+    {
+      "質問": "次回の講義のテーマは何ですか",
+      "FAQ にある": false,
+      "学習前の分類": "format_error",
+      "学習前の出力": "{\"answer\": \"次回の講義のテーマは「学習ポータル」の「課題」欄で提出する PDF 1 ファイルを提出します。\"}",
+      "学習後の分類": "needs_review",
+      "学習後の出力": "{\"answer\": \"この FAQ には記載がありません。運営に確認が必要です。\", \"needs_review\": true}"
+    },
+    {
+      "質問": "課題の提出期限はいつですか",
+      "FAQ にある": true,
+      "学習前の分類": "format_error",
+      "学習前の出力": "{\"answer\": \"9 月 30 日 23:59\"}",
+      "学習後の分類": "asserted",
+      "学習後の出力": "{\"answer\": \"課題の提出期限は 9 月 30 日 23:59（日本時間）です。\", \"needs_review\": false}"
+    }
+  ],
+  "executed_training_myself": true,
+  "training_metrics": {
+    "train_runtime_seconds": 238.7672,
+    "final_logged_loss": 0.013955086469650269,
+    "final_logged_loss_definition": "最後のlogging区間の平均loss（10 steps）",
+    "train_loss_overall": 0.4190472587943077,
+    "global_step": 40,
+    "epoch": 20.0,
+    "log_history": [
+      {
+        "loss": 1.561210823059082,
+        "grad_norm": 2.058093547821045,
+        "learning_rate": 0.00019618256431728194,
+        "entropy": 1.8382759094238281,
+        "num_tokens": 17860.0,
+        "mean_token_accuracy": 0.6871598720550537,
+        "epoch": 5.0,
+        "step": 10
+      },
+      {
+        "loss": 0.082891845703125,
+        "grad_norm": 0.2769385874271393,
+        "learning_rate": 0.00013612416661871533,
+        "entropy": 0.1748102366924286,
+        "num_tokens": 35720.0,
+        "mean_token_accuracy": 0.9846039265394211,
+        "epoch": 10.0,
+        "step": 20
+      },
+      {
+        "loss": 0.018131279945373537,
+        "grad_norm": 0.27262789011001587,
+        "learning_rate": 4.735678371226441e-05,
+        "entropy": 0.043504332285374404,
+        "num_tokens": 53580.0,
+        "mean_token_accuracy": 0.9959627091884613,
+        "epoch": 15.0,
+        "step": 30
+      },
+      {
+        "loss": 0.013955086469650269,
+        "grad_norm": 0.21362589299678802,
+        "learning_rate": 4.2658237049655323e-07,
+        "entropy": 0.03068465953692794,
+        "num_tokens": 71440.0,
+        "mean_token_accuracy": 0.9963105946779252,
+        "epoch": 20.0,
+        "step": 40
+      },
+      {
+        "train_runtime": 238.7672,
+        "train_samples_per_second": 1.173,
+        "train_steps_per_second": 0.168,
+        "total_flos": 221402196196608.0,
+        "train_loss": 0.4190472587943077,
+        "epoch": 20.0,
+        "step": 40
+      }
+    ]
+  },
+  "source_git_blob": "f395c4900558995276160f7849648edb98142009",
+  "knowledge_display_note": "配布コードのFAQ判定はtest用gold辞書を参照するため、train側の対照質問をFalseと表示します。下記knowledgeではFAQ本文に従い訂正。"
+}
