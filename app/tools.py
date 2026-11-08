@@ -5,11 +5,41 @@
 """
 
 import json
+from datetime import datetime, timezone
+from random import choice
+from uuid import uuid4
 from functools import cache
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MAX_RESULTS = 3
+LEARNING_LOG_DIR = Path(__file__).resolve().parent.parent / "learning_log"
+
+
+def make_quiz(lecture: int) -> str:
+    """指定した講義回の復習・理解確認を求められたとき、用語の問題と答えを1つ返す。"""
+    terms = [entry for entry in load_glossary() if entry["lecture"] == lecture]
+    if not terms:
+        return f"第{lecture}回の用語はありません。別の回を指定してください。"
+    term = choice(terms)
+    return json.dumps({"lecture": lecture, "question": f"{term['term']}の意味は？",
+                       "answer": term["definition"]}, ensure_ascii=False)
+
+
+def save_learning_log(lecture: int, content: str) -> str:
+    """利用者が学習記録の保存を依頼したときだけ使う。対象の講義回と学んだ内容を保存する。
+
+    書き込み前にハーネスが利用者に内容を提示し、承認を得る必要がある。
+    """
+    if lecture < 1 or not content.strip() or len(content) > 10000:
+        return "保存しませんでした。講義回は1以上、内容は1〜10000文字で指定してください。"
+    LEARNING_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    path = LEARNING_LOG_DIR / f"{uuid4().hex}.json"
+    record = {"lecture": lecture, "content": content,
+              "created_at": datetime.now(timezone.utc).isoformat()}
+    with path.open("x", encoding="utf-8") as stream:
+        json.dump(record, stream, ensure_ascii=False, indent=2)
+    return f"保存しました: learning_log/{path.name}"
 
 
 @cache
