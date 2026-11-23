@@ -46,3 +46,29 @@ def test_material_result_reaches_the_model(monkeypatch):
     returns = _parts(result, ToolReturnPart)
     assert returns and returns[0].tool_name == "search_materials"
     assert json.loads(returns[0].content)["results"] == [hit]
+
+
+def test_hybrid_tools_are_registered_and_called(monkeypatch):
+    from app import tools
+    from app.agent import HYBRID_INSTRUCTIONS
+
+    fake_hybrid = {
+        "seeds": [{"page_id": "lec02-main-p053", "lecture": 2, "page": 53, "content": "構造化出力"}],
+        "expanded": [{"page_id": "lec03-main-p035", "lecture": 3, "page": 35, "content": "制約付きデコーディング"}],
+        "tree_sections": [],
+        "chapter_index": [],
+    }
+    monkeypatch.setattr("app.retrieval.search_hybrid", lambda *args, **kwargs: fake_hybrid)
+    monkeypatch.setattr("app.retrieval.read_page", lambda page_id: {"page_id": page_id, "content": "本文"})
+    monkeypatch.setattr("app.retrieval.browse_tree", lambda node_id=None: {"node": {"id": "root", "title": "root"}, "children": []})
+
+    model = TestModel()
+    with agent.override(model=model, instructions=HYBRID_INSTRUCTIONS, tools=[tools.search_hybrid, tools.read_page, tools.browse_tree]):
+        result = agent.run_sync("構造化出力とFTの使い分けは？")
+
+    offered = {t.name for t in model.last_model_request_parameters.function_tools}
+    assert {"search_hybrid", "read_page", "browse_tree"} <= offered
+    returns = _parts(result, ToolReturnPart)
+    by_name = {r.tool_name: json.loads(r.content) for r in returns}
+    assert by_name["search_hybrid"] == fake_hybrid
+    assert by_name["read_page"]["content"] == "本文"
