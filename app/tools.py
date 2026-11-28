@@ -126,3 +126,33 @@ def search_graph(query: str) -> str:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
     except APIError as e:
         return json.dumps({"error": api_error_message(e.code)}, ensure_ascii=False)
+
+
+def read_page(page_id: str) -> str:
+    """指定した page_id（例: lec03-main-p034）の1ページの本文と引用情報を返す。
+
+    tree_sections や browse_tree で見つけた不足ページの本文を読むときに使う。
+    """
+    from app.retrieval import read_page as fetch_page
+
+    try:
+        return json.dumps(fetch_page(page_id), ensure_ascii=False)
+    except (ValueError, OSError) as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+def search_hybrid(query: str) -> str:
+    """ベクトル検索の入口、拡張Graph（前後ページ・共通用語・関連用語）の再順位付け結果、およびTree目次を返す。
+
+    queryに調べたい内容を指定する。
+    """
+    import sqlite3
+    from google.genai.errors import APIError
+    from app.retrieval import search_hybrid as hybrid_search
+
+    try:
+        return json.dumps(hybrid_search(query), ensure_ascii=False)
+    except (ValueError, OSError, sqlite3.Error) as e:
+        return json.dumps({"error": str(e), "seeds": [], "expanded": []}, ensure_ascii=False)
+    except APIError as e:
+        return json.dumps({"error": api_error_message(e.code), "seeds": [], "expanded": []}, ensure_ascii=False)

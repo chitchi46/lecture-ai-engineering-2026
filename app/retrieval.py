@@ -18,6 +18,7 @@ from app.config import (
     EMBEDDING_DIMENSIONS, EMBEDDING_MAX_TOKENS, EMBEDDING_MODEL,
     RAG_DB, RAG_DOCUMENT_IDS, RAG_SOURCE, RAG_TOP_K, RAG_TREE, get_api_key,
     RAG_GRAPH, GRAPH_START_K, GRAPH_HOPS, GRAPH_MAX_RESULTS,
+    HYBRID_SEED_K, HYBRID_EXPAND_K,
 )
 
 
@@ -184,6 +185,187 @@ def search_graph(query: str) -> dict:
     return {"seeds": results, "expanded": expanded[:max(0, GRAPH_MAX_RESULTS - len(results))],
             "max_hops": GRAPH_HOPS}
 
+
+
+def _is_divider_page(page: dict) -> bool:
+    """章扉だけの情報量の少ないスライドを判定する。"""
+    return len(page["content"].strip()) < 100 and page["title"] == page["section"]
+
+
+def _first_sentence(text: str) -> str:
+    """ページ本文の先頭文（句点がない場合は先頭行）を返す。"""
+    return re.split(r"(?<=[。！？])|\n", text.strip(), maxsplit=1)[0]
+
+
+def search_hybrid(query: str) -> dict:
+    """ベクトル検索・拡張Graph（next_page/mentions/related_term）・Tree目次を組み合わせる。"""
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("検索語が空です。")
+
+    pages = {page["page_id"]: page for page in load_pages(RAG_SOURCE)}
+    graph = json.loads(RAG_GRAPH.read_text(encoding="utf-8"))
+    nodes = {
+        node["id"]: node
+        for node in graph["nodes"]
+        if node["kind"] == "term" or node["id"] in pages
+    }
+    adjacent = defaultdict(list)
+    for edge in graph["edges"]:
+        a, b, rel = edge["source"], edge["target"], edge["relation"]
+        if rel in ("next_page", "mentions", "related_term") and a in nodes and b in nodes:
+            adjacent[a].append((rel, b))
+            adjacent[b].append((rel, a))
+
+    term_degree = {
+        tid: sum(1 for rel, nb in adjacent[tid] if rel == "mentions" and nb in pages)
+        for tid, node in nodes.items()
+        if node["kind"] == "term"
+    }
+
+    with open_index(RAG_DB) as db:
+        vector = embed_text(query.strip(), "RETRIEVAL_QUERY")
+        rows = db.execute(
+            """
+            SELECT page_id, vec_distance_cosine(embedding, ?) AS distance
+            FROM chunks ORDER BY distance, page_id
+            """,
+            (sqlite_vec.serialize_float32(vector),),
+        ).fetchall()
+
+    distances = {row["page_id"]: row["distance"] for row in rows if row["page_id"] in pages}
+    ranked = [
+        (pid, dist)
+        for pid, dist in sorted(distances.items(), key=lambda x: (x[1], x[0]))
+        if not _is_divider_page(pages[pid])
+    ]
+    seed_ids = [pid for pid, _ in ranked[:HYBRID_SEED_K]]
+    seed_set = set(seed_ids)
+    seed_docs = {pages[pid]["document_id"] for pid in seed_ids}
+    seed_sections = {(pages[pid]["document_id"], pages[pid]["section"]) for pid in seed_ids}
+
+    seeds = [
+        {
+            **pages[pid],
+            "distance": distances[pid],
+            "hops": 0,
+            "path": [{"id": pid, "title": pages[pid]["title"]}],
+        }
+        for pid in seed_ids
+    ]
+
+    candidates: dict[str, list[tuple[str, float, int, list[dict]]]] = defaultdict(list)
+    for sid in seed_ids:
+        for rel, nb in adjacent[sid]:
+            if rel == "next_page" and nb in pages and nb not in seed_set and not _is_divider_page(pages[nb]):
+                candidates[nb].append((
+                    "next_page",
+                    0.08,
+                    1,
+                    [{"id": sid, "title": pages[sid]["title"]}, {"id": nb, "title": pages[nb]["title"]}],
+                ))
+            elif rel == "mentions" and nodes[nb]["kind"] == "term":
+                deg = max(1, term_degree.get(nb, 1))
+                bonus_2hop = 0.06 * min(1.0, 10.0 / deg)
+                for rel2, nb2 in adjacent[nb]:
+                    if rel2 == "mentions" and nb2 in pages and nb2 not in seed_set and not _is_divider_page(pages[nb2]):
+                        candidates[nb2].append((
+                            "mentions",
+                            bonus_2hop,
+                            deg,
+                            [
+                                {"id": sid, "title": pages[sid]["title"]},
+                                {"id": nb, "title": nodes[nb]["title"]},
+                                {"id": nb2, "title": pages[nb2]["title"]},
+                            ],
+                        ))
+                    elif rel2 == "related_term" and nodes[nb2]["kind"] == "term":
+                        deg2 = max(1, term_degree.get(nb2, 1))
+                        bonus_3hop = 0.045 * min(1.0, 10.0 / deg2)
+                        for rel3, nb3 in adjacent[nb2]:
+                            if rel3 == "mentions" and nb3 in pages and nb3 not in seed_set and not _is_divider_page(pages[nb3]):
+                                candidates[nb3].append((
+                                    "related_term",
+                                    bonus_3hop,
+                                    deg2,
+                                    [
+                                        {"id": sid, "title": pages[sid]["title"]},
+                                        {"id": nb, "title": nodes[nb]["title"]},
+                                        {"id": nb2, "title": nodes[nb2]["title"]},
+                                        {"id": nb3, "title": pages[nb3]["title"]},
+                                    ],
+                                ))
+
+    scored = []
+    for pid, reasons in candidates.items():
+        best_eff = -1.0
+        best_rel = ""
+        best_path: list[dict] = []
+        for rel, base_bonus, deg, path in reasons:
+            div_bonus = 0.0
+            if rel != "next_page" and deg <= 25:
+                if pages[pid]["document_id"] not in seed_docs:
+                    div_bonus = 0.08
+                elif (pages[pid]["document_id"], pages[pid]["section"]) not in seed_sections:
+                    div_bonus = 0.04
+            eff = base_bonus + div_bonus
+            if eff > best_eff:
+                best_eff = eff
+                best_rel = rel
+                best_path = path
+        score = (1.0 - distances[pid]) + best_eff
+        scored.append((score, pid, best_rel, best_path))
+
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    expanded = [
+        {
+            **pages[pid],
+            "distance": distances[pid],
+            "score": round(score, 4),
+            "relation": rel,
+            "hops": len(path) - 1,
+            "path": path,
+        }
+        for score, pid, rel, path in scored[:HYBRID_EXPAND_K]
+    ]
+
+    selected_ids = seed_set | {item["page_id"] for item in expanded}
+    selected_sections = {(item["document_id"], item["section"]) for item in seeds + expanded}
+
+    tree = json.loads(RAG_TREE.read_text(encoding="utf-8"))
+    tree_sections = []
+    chapter_index = []
+    for doc in tree["children"]:
+        if doc["id"] not in RAG_DOCUMENT_IDS:
+            continue
+        for child in doc.get("children", []):
+            if child["kind"] != "section":
+                continue
+            chapter_index.append(f"{child['id']}: {doc['title']} / {child['title']}")
+            if (doc["id"], child["title"]) in selected_sections:
+                siblings = []
+                for pnode in child.get("children", []):
+                    pid = pnode["id"]
+                    if pid in selected_ids or pid not in pages:
+                        continue
+                    page_info = pages[pid]
+                    if _is_divider_page(page_info):
+                        continue
+                    siblings.append(
+                        f"{pid} (p.{page_info['page']}) {page_info['title']}: {_first_sentence(page_info['content'])[:60]}"
+                    )
+                if siblings:
+                    tree_sections.append({
+                        "section_id": child["id"],
+                        "section_title": child["title"],
+                        "other_pages": siblings,
+                    })
+
+    return {
+        "seeds": seeds,
+        "expanded": expanded,
+        "tree_sections": tree_sections,
+        "chapter_index": chapter_index,
+    }
 
 
 def run_full_context(agent, question: str, model, instructions: str, prompt_template: str):
