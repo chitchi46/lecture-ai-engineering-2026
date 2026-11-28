@@ -13,6 +13,8 @@
 """
 
 import argparse
+import json
+import random
 
 from mcp.server.mcpserver import MCPServer
 
@@ -28,6 +30,37 @@ server = MCPServer(
 server.tool()(tools.search_glossary)
 
 # TODO(宿題・基礎): get_lecture_summary も公開しよう
+server.tool()(tools.get_lecture_summary)
+
+
+# 宿題・実装: 第3回の make_quiz にあたるツールを、サーバー側に直接書いて公開する。
+# 引数が範囲外のときは例外にせず、どう直せばよいかが分かる文を return で返す
+# （return の文は [tool return] としてそのままモデルに渡る。raise にすると [tool error] になる）
+@server.tool()
+def make_quiz(lecture: int) -> str:
+    """指定した講義回の復習・理解確認を求められたとき、その回の用語の問題と答えを1つ返す。
+
+    lecture には回の番号を整数で入れる（例: 第2回なら 2）。
+    """
+    by_lecture: dict[int, list[dict]] = {}
+    for entry in tools.load_glossary():
+        by_lecture.setdefault(entry["lecture"], []).append(entry)
+    available = sorted(by_lecture)
+    listed = "、".join(f"第{n}回" for n in available)
+    if lecture < 1:
+        return f"第{lecture}回はありません。回の番号は1以上の整数で指定してください（クイズを作れる回: {listed}）。"
+    if lecture > max(available):
+        return (
+            f"第{lecture}回は、この講座の用語集の範囲外です。"
+            f"クイズを作れる回は {listed} です。どれか1つを指定してください。"
+        )
+    if lecture not in by_lecture:
+        return f"第{lecture}回の用語は用語集にまだありません。クイズを作れる回は {listed} です。"
+    term = random.choice(by_lecture[lecture])
+    return json.dumps(
+        {"lecture": lecture, "question": f"{term['term']}の意味は？", "answer": term["definition"]},
+        ensure_ascii=False,
+    )
 
 
 def main() -> None:
